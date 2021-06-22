@@ -1,9 +1,9 @@
 /*
- * DTrackNetUDP: Java source file, A.R.T. GmbH
+ * DTrackNetUDP: Java source file
  *
  * DTrackNetUDP: functions for receiving and sending UDP/IP packets
  *
- * Copyright (c) 2018-2019, Advanced Realtime Tracking GmbH
+ * Copyright (c) 2018-2021 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,7 +28,7 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
- * Version v2.6.0
+ * Version v2.7.0
  * 
  * Purpose: - ensures, that the newest available packet is read
  */
@@ -43,6 +43,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -179,7 +180,7 @@ class DTrackNetUDP
 
 
 	/**
-	 * Returns the latest received TCP packet.
+	 * Returns the latest received UDP packet.
 	 * 
 	 * @return Content of the latest received UDP packet
 	 */
@@ -204,6 +205,19 @@ class DTrackNetUDP
 		udpPacketContent = packet;
 		return packet.length();
 	}
+
+	/**
+	 * Get IP address of sender of latest received data.
+	 *
+	 * @return IP address, {@code null} if not available
+	 */
+	protected InetAddress getRemoteIp()
+	{
+		if ( receiver == null )  return null;
+
+		return receiver.getRemoteIp();
+	}
+
 
 	/**
 	 * Send custom UDP data.
@@ -240,7 +254,7 @@ class DTrackNetUDP
 	/**
 	 * Starts receiving thread using a ReceiverRunnable object.
 	 * 
-	 * @param timeout Timeout for receiving data packets
+	 * @param timeout Timeout for receiving data packets (in ms)
 	 * @param maxLen Length of buffer
 	 * @return 0 if ok, &lt;0 if error occurred
 	 */
@@ -289,6 +303,7 @@ class DTrackNetUDP
 		private DatagramSocket socket;
 		private int maxLen;
 		private int timeout;
+		private byte[] remoteIp;
 
 		private Lock lock = new ReentrantLock( true );
 		private Condition cond;
@@ -302,7 +317,7 @@ class DTrackNetUDP
 		 * 
 		 * @param socket Datagram socket
 		 * @param maxLen Maximum length of the resulting data
-		 * @param timeout Timeout of the socket
+		 * @param timeout Timeout of the socket (in ms)
 		 */
 		ReceiverRunnable( DatagramSocket socket, int maxLen, int timeout )
 		{
@@ -342,7 +357,7 @@ class DTrackNetUDP
 		 * 
 		 * @return The most recent UDP data content, {@code null} if nothing available
 		 */
-		String getNext()
+		protected String getNext()
 		{
 			try
 			{
@@ -377,6 +392,36 @@ class DTrackNetUDP
 		}
 
 		/**
+		 * Get IP address of sender of most recent UDP data.
+		 *
+		 * @return IP address, {@code null} if not available
+		 */
+		protected InetAddress getRemoteIp()
+		{
+			try
+			{
+				lock.lockInterruptibly();
+
+				return InetAddress.getByAddress( remoteIp );
+			}
+			catch ( InterruptedException e )
+			{
+				log.log( Level.WARNING, "Error while returning remote IP address", e );
+				Thread.currentThread().interrupt();
+			}
+			catch ( UnknownHostException e )
+			{
+			}
+			finally
+			{
+				lock.unlock();  // makes sure all locks are unlocked (to prevent deadlocks)
+			}
+
+			return null;
+		}
+
+
+		/**
 		 * Thread routine.
 		 */
 		@Override
@@ -407,6 +452,8 @@ class DTrackNetUDP
 					socket.receive( packet );
 
 					lock.lock();
+
+					remoteIp = packet.getAddress().getAddress();  // clone IP address
 
 					// overwrite current content in any case, because we want to deliver the most recent data
 					next = new String( packet.getData(), 0, packet.getLength() );

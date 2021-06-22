@@ -1,10 +1,10 @@
 /*
- * DTrackSDK: Java source file, A.R.T. GmbH
+ * DTrackSDK: Java source file
  *
  * DTrackSDK: functions to receive and process DTrack UDP packets (ASCII protocol), as
  * well as to exchange DTrack2/DTrack3 TCP command strings.
  *
- * Copyright (c) 2018-2019, Advanced Realtime Tracking GmbH
+ * Copyright (c) 2018-2021 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,7 +29,7 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
- * Version v2.6.0
+ * Version v2.7.0
  * 
  * Purpose:
  *  - receives DTrack UDP packets (ASCII protocol) and converts them into easier to handle data
@@ -58,9 +58,9 @@ import java.util.logging.Logger;
  */
 public class DTrackSDK extends DTrackParser implements AutoCloseable
 {
-	private static final int DTRACK2_PORT_COMMAND = 50105;  // Controller port number (TCP) for 'dtrack2' commands
-	private static final int DTRACK2_PORT_TACTILE = 50110;  // Controller port number (UDP) for 'tfb' tactile commands
-	private static final int DTRACK2_PROT_MAXLEN = 200;     // max. length of 'dtrack2' command
+	private static final int DTRACK2_PORT_COMMAND = 50105;   // Controller port number (TCP) for 'dtrack2' commands
+	private static final int DTRACK2_PORT_FEEDBACK = 50110;  // Controller port number (UDP) for feedback commands
+	private static final int DTRACK2_PROT_MAXLEN = 200;      // max. length of 'dtrack2' command
 
 	private static final int DEFAULT_TCP_TIMEOUT = 10000;  // default TCP timeout (in ms)
 	private static final int DEFAULT_UDP_TIMEOUT = 1000;   // default UDP timeout (in ms)
@@ -100,6 +100,53 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 
 	/**
+	 * Universal constructor, can be used for any mode. Recommended for new applications.
+	 * Refer to other constructors for details. Communicating mode just for DTrack2/DTrack3.
+	 * <p>
+	 * Examples for connection string:
+	 * <ul>
+	 * <li>"5000" : Port number (UDP), use for pure listening mode.</li>
+	 * <li>"224.0.1.0:5000" : Multicast IP and port number (UDP), use for multicast listening mode.</li>
+	 * <li>"atc-301422002:5000" : Hostname of Controller and port number (UDP), use for communicating mode.</li>
+	 * <li>"192.168.0.1:5000" : IP address of Controller and port number (UDP), use for communicating mode.</li>
+	 * </ul>
+	 * <p>
+	 * <b>Remember to insert {@link DTrackSDK#close()} after SDK usage or use try-with-resources to
+	 * close all sockets.</b>
+	 * 
+	 * @param connection Connection string ("&lt;data port&gt;" or "&lt;ip/host&gt;:&lt;data port&gt;")
+	 */
+	public DTrackSDK( final String connection )
+	{
+		super();
+
+		int ind = connection.lastIndexOf( ':' );
+		if ( ind != -1 )
+		{
+			InetAddress ip;
+			try
+			{
+				ip = InetAddress.getByName( connection.substring( 0, ind ) );
+			}
+			catch ( UnknownHostException e )
+			{
+				log.log( Level.SEVERE, "Can't get IP address", e );
+				return;
+			}
+
+			int port = Integer.parseInt( connection.substring( ind + 1 ) );
+
+			init( ip, port );
+		}
+		else
+		{
+			int port = Integer.parseInt( connection );
+
+			init( null, port );
+		}
+	}
+
+	/**
 	 * Constructor, use for pure listening mode. Using this constructor, only a UDP receiver to get
 	 * tracking data from the Controller will be established. Please start measurement manually.
 	 * <p>
@@ -111,6 +158,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	public DTrackSDK( int dataPort )
 	{
 		super();
+
 		init( null, dataPort );
 	}
 
@@ -128,6 +176,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	public DTrackSDK( final InetAddress multicastIp, int dataPort )
 	{
 		super();
+
 		init( multicastIp, dataPort );
 	}
 
@@ -187,12 +236,10 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 		lastServerError = Errors.ERR_NONE;
 		setLastDTrackError();
 
-		controllerIP = ip;
-
 		// initialize UDP socket
 		if ( isMulticast )
 		{
-			udp = new DTrackNetUDP( controllerIP, dataPort );
+			udp = new DTrackNetUDP( ip, dataPort );
 		} else {
 			udp = new DTrackNetUDP( dataPort );
 		}
@@ -201,11 +248,13 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 		// initialize TCP connection
 		try
 		{
-			if ( isController && controllerIP.isReachable( tcpTimeout ) )
+			if ( isController && ip.isReachable( tcpTimeout ) )
 			{
+				controllerIP = ip;
 				tcp = new DTrackNetTCP( controllerIP, DTRACK2_PORT_COMMAND, tcpTimeout );
 				if ( ! tcp.isValid() )
 				{
+					controllerIP = null;
 					tcp = null;
 				}
 			}
@@ -232,7 +281,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	 * <p>
 	 * Needed to receive DTrack UDP data, but does not guarantee this. Especially in case no data is sent to this port.
 	 * 
-	 * @return Socket is open
+	 * @return Socket is open?
 	 */
 	public final boolean isDataInterfaceValid()
 	{
@@ -268,30 +317,38 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	/**
 	 * Set UDP timeout for receiving tracking data.
 	 * 
-	 * @param timeout Timeout for receiving tracking data in ms; 0 to set default (1000 ms)
+	 * @param timeout Timeout for receiving tracking data in us; 0 to set default (1.0 s)
 	 * @return Successful?
 	 */
 	public boolean setDataTimeoutUS( int timeout )
 	{
 		if ( timeout <= 0 )
-			timeout = DEFAULT_UDP_TIMEOUT;
-
-		udpTimeout = timeout;
+		{
+			udpTimeout = DEFAULT_UDP_TIMEOUT;
+		}
+		else
+		{
+			udpTimeout = timeout / 1000;
+		}
 		return true;
 	}
 
 	/**
 	 * Set TCP timeout for exchanging commands with Controller.
 	 * 
-	 * @param timeout Timeout for reply of Controller in ms; 0 to set default (10000 ms)
+	 * @param timeout Timeout for reply of Controller in us; 0 to set default (10.0 s)
 	 * @return Successful?
 	 */
 	public boolean setCommandTimeoutUS( int timeout )
 	{
 		if ( timeout <= 0 )
-			timeout = DEFAULT_TCP_TIMEOUT;
-
-		tcpTimeout = timeout;
+		{
+			tcpTimeout = DEFAULT_TCP_TIMEOUT;
+		}
+		else
+		{
+			tcpTimeout = timeout / 1000;
+		}
 		return true;
 	}
 
@@ -885,7 +942,10 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 
 	/**
-	 * Send tactile command to set feedback on a specific finger of a specific hand.
+	 * Send tactile FINGERTRACKING command to set feedback on a specific finger of a specific hand.
+	 * <p>
+	 * Sends command to the sender IP address of the latest received UDP data, if no hostname or IP address
+	 * of a Controller is defined.
 	 * 
 	 * @param handId Hand id, range 0 ..
 	 * @param fingerId Finger id, range 0 ..
@@ -908,14 +968,14 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 		sb.append( "\0" );
 
-		if ( udp.send( controllerIP, DTRACK2_PORT_TACTILE, sb.toString() ) != 0 )
-			return false;
-
-		return true;
+		return sendFeedbackCommand( sb.toString() );
 	}
 
 	/**
-	 * Send tactile command to set tactile feedback on all fingers of a specific hand.
+	 * Send tactile FINGERTRACKING command to set tactile feedback on all fingers of a specific hand.
+	 * <p>
+	 * Sends command to the sender IP address of the latest received UDP data, if no hostname or IP address
+	 * of a Controller is defined.
 	 * 
 	 * @param handId Hand id, range 0 ..
 	 * @param strength Strength of feedback on all fingers, between 0.0 and 1.0
@@ -940,14 +1000,14 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 		sb.append( "\0" );
 
-		if ( udp.send( controllerIP, DTRACK2_PORT_TACTILE, sb.toString() ) != 0 )
-			return false;
-
-		return true;
+		return sendFeedbackCommand( sb.toString() );
 	}
 
 	/**
-	 * Send tactile command to turn off tactile feedback on all fingers of a specific hand.
+	 * Send tactile FINGERTRACKING command to turn off tactile feedback on all fingers of a specific hand.
+	 * <p>
+	 * Sends command to the sender IP address of the latest received UDP data, if no hostname or IP address
+	 * of a Controller is defined.
 	 * 
 	 * @param handId Hand id, range 0 ..
 	 * @param numFinger Number of fingers
@@ -962,6 +1022,76 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 		}
 
 		return tactileHand( handId, strength );
+	}
+
+	/**
+	 * Send Flystick feedback command to start a beep on a specific Flystick.
+	 * <p>
+	 * Sends command to the sender IP address of the latest received UDP data, if no hostname or IP address
+	 * of a Controller is defined.
+	 *
+	 * @param flystickId Flystick id, range 0 ..
+	 * @param durationMs Time duration of the beep (in milliseconds)
+	 * @param frequencyHz Frequency of the beep (in Hertz)
+	 * @return Successful?
+	 */
+	public boolean flystickBeep( int flystickId, double durationMs, double frequencyHz )
+	{
+		StringBuilder sb = new StringBuilder();
+		sb.append( "ffb 1 " );
+
+		sb.append( "[" ).append( flystickId ).append( " " ).append( ( int )durationMs );
+		sb.append( " " ).append( ( int )frequencyHz ).append( " 0 0][]" );
+
+		sb.append( "\0" );
+
+		return sendFeedbackCommand( sb.toString() );
+	}
+
+	/**
+	 * Send Flystick feedback command to start a vibration pattern on a specific Flystick.
+	 * <p>
+	 * Sends command to the sender IP address of the latest received UDP data, if no hostname or IP address
+	 * of a Controller is defined.
+	 *
+	 * @param flystickId Flystick id, range 0 ..
+	 * @param vibrationPattern Vibration pattern id, range 1 ..
+	 * @return Successful?
+	 */
+	public boolean flystickVibration( int flystickId, int vibrationPattern )
+	{
+		StringBuilder sb = new StringBuilder();
+		sb.append( "ffb 1 " );
+
+		sb.append( "[" ).append( flystickId ).append( " 0 0 " ).append( vibrationPattern );
+		sb.append( " 0][]" );
+
+		sb.append( "\0" );
+
+		return sendFeedbackCommand( sb.toString() );
+	}
+
+	/**
+	 * Send feedback command via UDP.
+	 * 
+	 * @param command Command string
+	 * @return Successful?
+	 */
+	private boolean sendFeedbackCommand( String command )
+	{
+		InetAddress ip = controllerIP;
+		if ( ip == null )  // if IP of Controller is not known, try IP of latest received UDP data
+		{
+			ip = udp.getRemoteIp();
+
+			if ( ip == null )
+				return false;
+		}
+
+		if ( udp.send( ip, DTRACK2_PORT_FEEDBACK, command ) != 0 )
+			return false;
+
+		return true;
 	}
 
 

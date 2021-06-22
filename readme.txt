@@ -1,4 +1,4 @@
-Copyright (C) 2018-2019, Advanced Realtime Tracking GmbH
+Copyright (c) 2018-2021 Advanced Realtime Tracking GmbH & Co. KG
 
 
 License
@@ -41,7 +41,8 @@ The sample source code files show how to use the DTrackSDK:
   Listening:           pure listening for measurement data
   ListeningMulticast:  multicast listening for measurement data
   Communicating:       additional controlling the tracking system through remote commands
-  TactileFlystick:     controlling a tactile feedback device using a Flystick
+  TactileFlystick:     controlling a tactile FINGERTRACKING device using a Flystick
+  FlystickFeedback:    controlling a Flystick with feedback
 
 
 Source Documentation
@@ -60,16 +61,17 @@ In an IDE:
     - e.g. Eclipse: Right click on Project -> Properties -> Java Build Path -> Libraries -> Add External JARs...
 
 Or alternatively in command line or terminal:
-  - use 'javac <file-to-compile.java> -extdirs <external-dir-of-DTrackSDK.jar>' 
-     or 'javac <file-to-compile.java> -sourcepath <sourcepath-of-DTrackSDK.jar>' to compile your .java file
-  - on Linux: use 'java -cp ".:./<classpath-to-DTrackSDK.jar>" <class-to-run>' to run your application
-  - on Windows: use 'java -cp ".;.\<classpath-to-DTrackSDK.jar>" <class-to-run>' to run your application
+  - to compile an example or your application:
+    [PROMPT] javac <file-to-compile.java> -extdirs <path-to-DTrackSDK.jar>
+  - to run an example or your application:
+    - on Linux: [PROMPT] java -cp "<path-to-compiled-file.class>:<path-to-DTrackSDK.jar>/DTrackSDK.jar" <class-to-run>
+    - on Windows: [PROMPT] java -cp "<path-to-compiled-file.class>;<path-to-DTrackSDK.jar>\DTrackSDK.jar" <class-to-run>
 
 
 Company details
 ---------------
 
-Advanced Realtime Tracking GmbH
+Advanced Realtime Tracking GmbH & Co. KG
 Am Oeferl 6
 D-82362 Weilheim
 Germany

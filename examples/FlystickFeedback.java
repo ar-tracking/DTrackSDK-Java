@@ -1,9 +1,9 @@
 /*
  * DTrackSDK: Java example
  *
- * TactileFlystick: Java example using Flystick to control a tactile FINGERTRACKING device
+ * FlystickFeedback: Java example to control a Flystick with feedback
  *
- * Copyright (c) 2018-2021 Advanced Realtime Tracking GmbH & Co. KG
+ * Copyright (c) 2021 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -32,7 +32,7 @@
  *  - example with or without DTrack2/DTrack3 remote commands
  *  - in communicating mode: starts measurement, collects frames and stops measurement again
  *  - in listening mode: please start measurement manually e.g. in DTrack frontend application
- *  - uses a Flystick to control an ART tactile FINGERTRACKING device
+ *  - controls a Flystick2+ with feedback
  *  - for DTrackSDK v2.7.0 (or newer)
  */
 
@@ -41,35 +41,28 @@ import art.DTrackSDK;
 import art.DTrackSDK.Errors;
 
 /**
- * Use in command line or terminal (TactileFlystick [<server host/ip>:]<data port> <Flystick id> <hand id>) or
- * ensure that program arguments ([<server host/ip>:]<data port> <Flystick id> <hand id>) are set in your IDE.
+ * Use in command line or terminal (FlystickFeedback [<server host/ip>:]<data port>) or
+ * ensure that program arguments ([<server host/ip>:]<data port>) are set in your IDE.
  * <p>
- * Control the tactile feedback device using the Flystick:
- * <li>Upper buttons set feedback for a finger with fixed strength,
- * <li>Joystick creates feedback for one or two fingers with variable strength,
+ * Control the Flystick feedback using the Flystick itself:
+ * <li>Upper buttons start vibration pattern,
+ * <li>Joystick button starts a beep with variable duration and frequency,
  * <li>Pressing the trigger button stops the program.
  */
 
-public class TactileFlystick
+public class FlystickFeedback
 {
 	private static DTrackSDK sdk;
 
-	private static final int NUMBER_OF_FINGERS = 3;  // for 3 fingers
-	private static double[] strength = new double[ NUMBER_OF_FINGERS ];
-
-	private static final long REPEAT_PERIOD = 1000;  // period (in milliseconds) to repeat tactile command
-	private static long lastTimeMillis;
+	private static boolean sentFeedback = false;
 
 	public static void main( String[] args )
 	{
-		if ( args.length != 3 )
+		if ( args.length != 1 )
 		{
-			System.out.println( "Usage: TactileFlystick [<server host/ip>:]<data port> <Flystick id> <hand id>" );
+			System.out.println( "Usage: FlystickFeedback [<server host/ip>:]<data port>" );
 			return;
 		}
-
-		int flystickId = Integer.parseInt( args[ 1 ] );
-		int handId = Integer.parseInt( args[ 2 ] );
 
 		// initialization:
 
@@ -98,11 +91,6 @@ public class TactileFlystick
 			}
 		}
 
-		for ( int i = 0; i < NUMBER_OF_FINGERS; i++ )
-			strength[ i ] = 0.0;
-
-		lastTimeMillis = System.currentTimeMillis();
-
 		// measurement:
 
 		if ( sdk.isCommandInterfaceValid() )
@@ -123,14 +111,23 @@ public class TactileFlystick
 			{
 				count++;
 
-				if ( flystickId >= sdk.getNumFlystick() || handId >= sdk.getNumHand() )
+				int nfly = 0;
+				for ( int id = 0; id < sdk.getNumFlystick(); id++ )
 				{
-					System.err.println( "Flystick ID or Hand ID doesn't exist!" );
-					isRunning = false;
+					if ( ( sdk.getFlystick( id ).getNumButton() >= 8 ) && ( sdk.getFlystick( id ).getNumJoystick() >= 2 ) )
+					{  // demo routine needs at least 8 buttons and 2 joystick values (e.g. Flystick2+)
+						nfly++;
+
+						if ( ! doFeedback( id ) )
+							isRunning = false;
+					}
 				}
 
-				if ( ! doTactile( flystickId, handId ) )
+				if ( nfly == 0 )
+				{
+					System.err.println( "No suitable Flystick identified!" );
 					isRunning = false;
+				}
 			} else {
 				errorToConsole();
 				if ( sdk.isCommandInterfaceValid() )  messagesToConsole();
@@ -139,8 +136,6 @@ public class TactileFlystick
 			if ( ( count % 100 == 0 ) && sdk.isCommandInterfaceValid() )
 				messagesToConsole();
 		}
-
-		sdk.tactileHandOff( handId, NUMBER_OF_FINGERS );
 
 		if ( sdk.isCommandInterfaceValid() )
 		{
@@ -152,72 +147,52 @@ public class TactileFlystick
 	}
 
 	/**
-	 * Process a frame and control tactile feedback device.
+	 * Process a frame and control Flystick feedback.
 	 *
 	 * @param flystickId Id of Flystick
-	 * @param handId Id of ART tactile feedback device
 	 * @return Continue measurement?
 	 */
-	private static boolean doTactile( int flystickId, int handId )
+	private static boolean doFeedback( int flystickId )
 	{
 		DTrackFlystick fly = sdk.getFlystick( flystickId );
 
 		if ( fly.getButton()[ 0 ] != 0 )  // stop program if trigger button pressed
 			return false;
 
-		// get new feedback strengths:
+		// get beep feedback:
 
-		double newStrength[] = new double[ NUMBER_OF_FINGERS ];
-
-		for ( int i = 0; i < NUMBER_OF_FINGERS; i++ )
+		if ( fly.getButton()[ 5 ] != 0 )  // joystick button of Flystick2+
 		{
-			newStrength[ i ] = 0.0;
+			double beepDuration = 500.0 + fly.getJoystick()[ 0 ] * 450.0;     // range 50 .. 950 ms
+			double beepFrequency = 5000.0 + fly.getJoystick()[ 1 ] * 3000.0;  // range 2000 .. 8000 Hz
 
-			if ( fly.getButton()[ i + 1 ] != 0 )  // fixed strength if pressing upper buttons
-				newStrength[ i ] = 0.5;
+			if ( ! sentFeedback )  // prevents permanent sending of feedback commands as long as button is pressed
+				sdk.flystickBeep( flystickId, beepDuration, beepFrequency );
+
+			sentFeedback = true;
+			return true;
 		}
 
-		double joy = fly.getJoystick()[ 0 ];
-		if ( joy > 0.0 )  // variable strength if using joystick
-		{
-			newStrength[ 0 ] = joy;
-		}
-		else if ( joy < 0.0 )
-		{
-			newStrength[ 2 ] = -joy;
-		}
+		// get vibration feedback:
 
-		joy = fly.getJoystick()[ 1 ];
-		if ( joy > 0.0 )
-		{
-			newStrength[ 1 ] = joy;
-		}
+		int vibrationPattern = 0;  // Flystick2+ supports up to 6 vibration pattern
+		if ( fly.getButton()[ 1 ] != 0 )  vibrationPattern = 1;
+		if ( fly.getButton()[ 2 ] != 0 )  vibrationPattern = 2;
+		if ( fly.getButton()[ 3 ] != 0 )  vibrationPattern = 3;
+		if ( fly.getButton()[ 4 ] != 0 )  vibrationPattern = 4;
+		if ( fly.getButton()[ 6 ] != 0 )  vibrationPattern = 5;  // button '5' (joystick button) is already used
+		if ( fly.getButton()[ 7 ] != 0 )  vibrationPattern = 6;
 
-		// check if sending of tactile command is necessary:
-
-		boolean dosend = false;
-		for ( int i = 0; i < NUMBER_OF_FINGERS; i++ )
+		if ( vibrationPattern > 0 )
 		{
-			if ( newStrength[ i ] != strength[ i ] )
-			{
-				strength[ i ] = newStrength[ i ];
-				dosend = true;
-			}
+			if ( ! sentFeedback )  // prevents permanent sending of feedback commands as long as button is pressed
+				sdk.flystickVibration( flystickId, vibrationPattern );
+
+			sentFeedback = true;
+			return true;
 		}
 
-		long timeMillis = System.currentTimeMillis();
-		if ( timeMillis - lastTimeMillis >= REPEAT_PERIOD )  // repeat tactile command
-			dosend = true;
-
-		// send tactile command:
-
-		if ( dosend )
-		{
-			sdk.tactileHand( handId, strength );
-
-			lastTimeMillis = timeMillis;
-		}
-
+		sentFeedback = false;
 		return true;
 	}
 

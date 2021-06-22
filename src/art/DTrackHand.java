@@ -1,9 +1,9 @@
 /*
- * DTrackHand: Java source file, A.R.T. GmbH
+ * DTrackHand: Java source file
  *
  * DTrackHand: class to define an object used for FINGERTRACKING hand data
  *
- * Copyright (c) 2018-2019, Advanced Realtime Tracking GmbH
+ * Copyright (c) 2018-2021, Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,7 +28,7 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
- * Version v2.6.0
+ * Version v2.7.0
  */
 
 package art;

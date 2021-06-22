@@ -1,9 +1,9 @@
 /*
- * DTrackJoint: Java source file, A.R.T. GmbH
+ * DTrackJoint: Java source file
  *
  * DTrackJoint: class to define an object used for ART-Human human model joint data
  *
- * Copyright (c) 2018-2019, Advanced Realtime Tracking GmbH
+ * Copyright (c) 2018-2021, Advanced Realtime Tracking GmbH & Co. KG
  * 
  * 1. Redistributions of source code must retain the above copyright
  *    notice, this list of conditions and the following disclaimer.
@@ -25,7 +25,7 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
- * Version v2.6.0
+ * Version v2.7.0
  */
 
 package art;

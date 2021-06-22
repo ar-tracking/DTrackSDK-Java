@@ -1,9 +1,9 @@
 /*
- * DTrackSDK: Java example, A.R.T. GmbH
+ * DTrackSDK: Java example
  *
  * Listening: Java example using DTrackSDK for pure listening
  *
- * Copyright (c) 2018-2019, Advanced Realtime Tracking GmbH
+ * Copyright (c) 2018-2021, Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,11 +28,10 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
- * Version v2.6.0
- *
  * Purpose:
- *  - example without DTrack2 remote commands: just collects frames
- *  - please start measurement manually e.g. in DTrack2 frontend application
+ *  - example without DTrack2/DTrack3 remote commands: just collects frames
+ *  - please start measurement manually e.g. in DTrack frontend application
+ *  - for DTrackSDK v2.6.0 (or newer)
  */
 
 import art.DTrackBody;
@@ -82,7 +81,7 @@ public class Listening
 		}
 		System.out.printf( "listening at local data port %s%n", sdk.getDataPort() );
 
-//		sdk.setDataTimeoutUS( 3000 );     // NOTE: change here timeout for receiving tracking data, if necessary
+//		sdk.setDataTimeoutUS( 3000000 );  // NOTE: change here timeout for receiving tracking data, if necessary
 //		sdk.setDataBufferSize( 100000 );  // NOTE: change here buffer size for receiving tracking data, if necessary
 
 		// measurement:

@@ -1,9 +1,9 @@
 /*
  * DTrackSDK: Java example
  *
- * ListeningMulticast: Java example using DTrackSDK for pure multicast listening
+ * Universal: Java example using universal DTrackSDK constructor for all modes
  *
- * Copyright (c) 2018-2021, Advanced Realtime Tracking GmbH & Co. KG
+ * Copyright (c) 2021 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,13 +29,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * Purpose:
- *  - example without DTrack2/DTrack3 remote commands: just collects frames from multicast address
- *  - please start measurement manually e.g. in DTrack frontend application
- *  - for DTrackSDK v2.6.0 (or newer)
+ *  - example with or without DTrack2/DTrack3 remote commands
+ *  - in communicating mode: starts measurement, collects some frames and stops measurement again
+ *  - in listening mode: please start measurement manually e.g. in DTrack frontend application
+ *  - for DTrackSDK v2.7.0 (or newer)
  */
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import art.DTrackBody;
 import art.DTrackFlystick;
 import art.DTrackFinger;
@@ -50,64 +49,59 @@ import art.DTrackSDK;
 import art.DTrackSDK.Errors;
 
 /**
- * Use in command line or terminal (ListeningMulticast <multicast ip> <data port>)
- * or ensure that program arguments (<multicast ip> <data port>) are set in your IDE.
+ * Use in command line or terminal (Universal [<server host/ip>:]<data port>) or
+ * ensure that program arguments ([<server host/ip>:]<data port>) are set in your IDE.
  *
  */
-public class ListeningMulticast
+public class Universal
 {
-	static DTrackSDK sdk;
+	private static DTrackSDK sdk;
 
 	public static void main( String[] args )
 	{
-		if ( args.length != 2 )
+		if ( args.length != 1 )
 		{
-			System.out.println( "Usage: ListeningMulticast <multicast ip> <data port>" );
-			return;
-		}
-
-		InetAddress ip;
-		try
-		{
-			ip = InetAddress.getByName( args[ 0 ] );
-		}
-		catch ( UnknownHostException e )
-		{
-			System.out.println( "Can't get IP address" );
-			return;
-		}
-		if ( ! ip.isMulticastAddress() )
-		{
-			System.out.println( "No multicast IP address" );
-			return;
-		}
-
-		int port = Integer.parseInt( args[ 1 ] );
-		if ( port <= 0 || port >= 65536 )
-		{
-			System.out.println( "Invalid port " + port );
+			System.out.println( "Usage: Universal [<server host/ip>:]<data port>" );
 			return;
 		}
 
 		// initialization:
 
-		sdk = new DTrackSDK( ip, port );
+		sdk = new DTrackSDK( args[ 0 ] );
 		if ( ! sdk.isDataInterfaceValid() )
 		{
-			System.out.println( "DTrackSDK init error" );
+			System.err.println( "DTrackSDK init error" );
 			return;
 		}
-		System.out.printf( "listening at multicast ip %s, local data port %s%n", args[ 0 ], sdk.getDataPort() );
+		System.out.printf( "connected to ATC '%s', listening at local data port %s%n", args[ 0 ], sdk.getDataPort() );
 
-//		sdk.setDataTimeoutUS( 3000000 );  // NOTE: change here timeout for receiving tracking data, if necessary
-//		sdk.setDataBufferSize( 100000 );  // NOTE: change here buffer size for receiving tracking data, if necessary
+//		sdk.setCommandTimeoutUS( 30000000 );  // NOTE: change here timeout for exchanging commands, if necessary
+//		sdk.setDataTimeoutUS( 3000000 );      // NOTE: change here timeout for receiving tracking data, if necessary
+//		sdk.setDataBufferSize( 100000 );      // NOTE: change here buffer size for receiving tracking data, if necessary
+
+		// request some settings:
+
+		if ( sdk.isCommandInterfaceValid() )
+		{
+			String par = sdk.getParam( "system", "access" );  // ensure full access for DTrack2 commands
+			if ( par == null || par.compareTo( "full" ) != 0 )
+			{
+				System.err.println( "Full access to ATC required!" );  // maybe DTrack2/3 frontend is still connected to ATC
+				errorToConsole();
+				return;
+			}
+		}
 
 		// measurement:
 
-		if ( ! sdk.startMeasurement() )  // start listening
+		if ( sdk.isCommandInterfaceValid() )
 		{
-			System.out.println( "Measurement start failed!" );
-			return;
+			if ( ! sdk.startMeasurement() )  // start measurement
+			{
+				System.err.println( "Measurement start failed!" );
+				messagesToConsole();
+				return;
+			}
 		}
 
 		int count = 0;
@@ -118,10 +112,19 @@ public class ListeningMulticast
 				output();
 			} else {
 				errorToConsole();
+				if ( sdk.isCommandInterfaceValid() )  messagesToConsole();
 			}
+
+			if ( ( count % 100 == 0 ) && sdk.isCommandInterfaceValid() )
+				messagesToConsole();
 		}
 
-		sdk.stopMeasurement();  // stop listening
+		if ( sdk.isCommandInterfaceValid() )
+		{
+			sdk.stopMeasurement();  // stop measurement
+			messagesToConsole();
+		}
+
 		sdk.close();
 	}
 
@@ -321,8 +324,11 @@ public class ListeningMulticast
 		}
 	}
 
+
 	private static boolean errorToConsole()
 	{
+		boolean ret = true;
+
 		if ( sdk.getLastDataError() != Errors.ERR_NONE )
 		{
 			if ( sdk.getLastDataError() == Errors.ERR_TIMEOUT )
@@ -338,10 +344,36 @@ public class ListeningMulticast
 				System.err.println( "--- error while parsing tracking data" );
 			}
 
-			return false;
+			ret = false;
 		}
 
-		return true;
+		if ( sdk.getLastServerError() != Errors.ERR_NONE )
+		{
+			if ( sdk.getLastServerError() == Errors.ERR_TIMEOUT )
+			{
+				System.err.println( "--- timeout while waiting for Controller command" );
+			}
+			else if ( sdk.getLastServerError() == Errors.ERR_NET )
+			{
+				System.err.println( "--- error while receiving Controller command" );
+			}
+			else if ( sdk.getLastServerError() == Errors.ERR_PARSE )
+			{
+				System.err.println( "--- error while parsing Controller command" );
+			}
+
+			ret = false;
+		}
+
+		return ret;
+	}
+
+	private static void messagesToConsole()
+	{
+		while ( sdk.getMessage() )
+		{
+			System.err.printf( "ATC message: \"%s\" \"%s\"%n", sdk.getMessageStatus(), sdk.getMessageMsg() );
+		}
 	}
 }
 
