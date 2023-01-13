@@ -1,10 +1,9 @@
-/*
- * DTrackSDK: Java source file
+/* DTrackSDK in Java: DTrackSDK.java
  *
- * DTrackSDK: functions to receive and process DTrack UDP packets (ASCII protocol), as
- * well as to exchange DTrack2/DTrack3 TCP command strings.
+ * Functions to receive and process DTRACK UDP packets (ASCII protocol), as
+ * well as to exchange DTrack2/DTRACK3 TCP command strings.
  *
- * Copyright (c) 2018-2021 Advanced Realtime Tracking GmbH & Co. KG
+ * Copyright (c) 2018-2022 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,13 +28,13 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
- * Version v2.7.0
+ * Version v2.8.0
  * 
  * Purpose:
- *  - receives DTrack UDP packets (ASCII protocol) and converts them into easier to handle data
- *  - sends and receives DTrack2/DTrack3 commands (TCP)
+ *  - receives DTRACK UDP packets (ASCII protocol) and converts them into easier to handle data
+ *  - sends and receives DTrack2/DTRACK3 commands (TCP)
  *  - DTrack network protocol according to:
- *    'DTrack2 User Manual, Technical Appendix' or 'DTrack3 Programmer's Guide'
+ *    'DTrack2 User Manual, Technical Appendix' or 'DTRACK3 Programmer's Guide'
  */
 
 package art;
@@ -75,7 +74,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 		ERR_NET, ERR_NONE, ERR_PARSE, ERR_TIMEOUT
 	}
 
-	private int messageErrorId;  // recent DTrack2/DTrack3 event message
+	private int messageErrorId;  // recent DTrack2/DTRACK3 event message
 	private int messageFrameNr;
 	private String messageMsg;
 	private String messageOrigin;
@@ -101,7 +100,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 	/**
 	 * Universal constructor, can be used for any mode. Recommended for new applications.
-	 * Refer to other constructors for details. Communicating mode just for DTrack2/DTrack3.
+	 * Refer to other constructors for details. Communicating mode just for DTrack2/DTRACK3.
 	 * <p>
 	 * Examples for connection string:
 	 * <ul>
@@ -303,7 +302,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Returns if TCP connection for DTrack2/DTrack3 commands is active.
+	 * Returns if TCP connection for DTrack2/DTRACK3 commands is active.
 	 * 
 	 * @return Command interface is active
 	 */
@@ -313,6 +312,25 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 		return tcp.isValid();
 	}
+
+	/**
+	 * Returns if TCP connection has full access for DTrack2/DTRACK3 commands.
+	 *
+	 * @return Got full access to command interface?
+	 */
+	public final boolean isCommandInterfaceFullAccess()
+	{
+		if ( ! isCommandInterfaceValid() )  return false;
+
+		String par = getParam( "system", "access" );
+		if ( ( par == null ) || ( par.compareTo( "full" ) != 0 ) )
+		{
+			return false;
+		}
+
+		return true;
+	}
+
 
 	/**
 	 * Set UDP timeout for receiving tracking data.
@@ -483,7 +501,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Get last DTrack2/DTrack3 command error code.
+	 * Get last DTrack2/DTRACK3 command error code.
 	 * 
 	 * @return Error code
 	 */
@@ -493,7 +511,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Get last DTrack2/DTrack3 command error description.
+	 * Get last DTrack2/DTRACK3 command error description.
 	 * 
 	 * @return Error description
 	 */
@@ -545,7 +563,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 
 	/**
-	 * Get DTrack2/DTrack3 parameter.
+	 * Get DTrack2/DTRACK3 parameter.
 	 * 
 	 * @param category Parameter category
 	 * @param name Parameter name
@@ -557,7 +575,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Get DTrack2/DTrack3 parameter using a string containing parameter category and name.
+	 * Get DTrack2/DTRACK3 parameter using a string containing parameter category and name.
 	 * 
 	 * @param parameter Parameter key (category, name)
 	 * @return Parameter value, {@code null} if unsuccessful (a DTrack error message is available)
@@ -586,7 +604,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Set DTrack2/DTrack3 parameter.
+	 * Set DTrack2/DTRACK3 parameter.
 	 * 
 	 * @param category Parameter category
 	 * @param name Parameter name
@@ -599,7 +617,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Set DTrack2/DTrack3 parameter using a string containing parameter category, name and new value.
+	 * Set DTrack2/DTRACK3 parameter using a string containing parameter category, name and new value.
 	 * 
 	 * @param parameter Parameter string (category, name, value)
 	 * @return Successful? (if not, a DTrack error message is available)
@@ -611,7 +629,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 
 	/**
-	 * Get DTrack2/DTrack3 event message from the Controller.
+	 * Get DTrack2/DTRACK3 event message from the Controller.
 	 * <p>
 	 * Updates internal message structures. Use the appropriate methods to get the contents of the
 	 * message.
@@ -685,7 +703,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Get frame counter of last DTrack2/DTrack3 event message.
+	 * Get frame counter of last DTrack2/DTRACK3 event message.
 	 * 
 	 * @return Frame counter
 	 */
@@ -695,7 +713,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Get error id of last DTrack2/DTrack3 event message.
+	 * Get error id of last DTrack2/DTRACK3 event message.
 	 * 
 	 * @return Error id
 	 */
@@ -705,7 +723,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Get origin of last DTrack2/DTrack3 event message.
+	 * Get origin of last DTrack2/DTRACK3 event message.
 	 * 
 	 * @return Origin
 	 */
@@ -715,7 +733,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Get status of last DTrack2/DTrack3 event message.
+	 * Get status of last DTrack2/DTRACK3 event message.
 	 * 
 	 * @return Status
 	 */
@@ -725,7 +743,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Get message text of last DTrack2/DTrack3 event message.
+	 * Get message text of last DTrack2/DTRACK3 event message.
 	 * 
 	 * @return Message text
 	 */
@@ -736,7 +754,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 
 	/**
-	 * Compare strings regarding DTrack2/DTrack3 parameter rules
+	 * Compare strings regarding DTrack2/DTRACK3 parameter rules
 	 * 
 	 * @param str String
 	 * @param par Parameter string
@@ -797,13 +815,13 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 
 
 	/**
-	 * Send DTrack2/DTrack3 command to DTrack (TCP command interface).
+	 * Send DTrack2/DTRACK3 command to DTRACK (TCP command interface).
 	 * <p>
 	 * Answers like "dtrack2 ok" and "dtrack2 err .." are processed. Both cases are reflected in the
 	 * return value. {@linkplain DTrackSDK#getLastDTrackError()} and
 	 * {@linkplain DTrackSDK#getLastDTrackErrorDescription()} will return more information.
 	 * 
-	 * @param dtrack2Command DTrack2/DTrack3 command string
+	 * @param dtrack2Command DTrack2/DTRACK3 command string
 	 * @return 0&nbsp; specific answer, needs to be parsed <br>
 	 *         1&nbsp; answer is "dtrack2 ok" <br>
 	 *         2&nbsp; answer is "dtrack2 err .."; refer to {@link DTrackSDK#getLastDataError()}
@@ -817,14 +835,14 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Send DTrack2/DTrack3 command to DTrack and receive answer (TCP command interface).
+	 * Send DTrack2/DTRACK3 command to DTRACK and receive answer (TCP command interface).
 	 * <p>
 	 * Answers like "dtrack2 ok" and "dtrack2 err .." are processed. Both cases are reflected in the
 	 * return value. {@linkplain DTrackSDK#getLastDTrackError()} and
 	 * {@linkplain DTrackSDK#getLastDTrackErrorDescription()} will return more information.
 	 * 
-	 * @param dtrack2Command DTrack2/DTrack3 command string
-	 * @param dtrack2Response DTrack2/DTrack3 answer string
+	 * @param dtrack2Command DTrack2/DTRACK3 command string
+	 * @param dtrack2Response DTrack2/DTRACK3 answer string
 	 * @return 0&nbsp; specific answer, needs to be parsed <br>
 	 *         1&nbsp; answer is "dtrack2 ok" <br>
 	 *         2&nbsp; answer is "dtrack2 err .."; refer to {@link DTrackSDK#getLastDataError()}
@@ -921,7 +939,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Set last DTrack2/DTrack3 command error to default values.
+	 * Set last DTrack2/DTRACK3 command error to default values.
 	 */
 	private void setLastDTrackError()
 	{
@@ -929,7 +947,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	}
 
 	/**
-	 * Set last DTrack2/DTrack3 command error.
+	 * Set last DTrack2/DTRACK3 command error.
 	 * 
 	 * @param newError New error code for last operation
 	 * @param newErrorString Corresponding error string if exists

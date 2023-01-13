@@ -1,9 +1,8 @@
-/*
- * DTrackSDK: Java example
+/* DTrackSDK in Java: Communicating.java
  *
- * Communicating: Java example using DTrackSDK to control DTrack2/DTrack3 Controller
+ * Java example using DTrackSDK to control DTrack2/DTRACK3 Controller.
  *
- * Copyright (c) 2018-2021, Advanced Realtime Tracking GmbH & Co. KG
+ * Copyright (c) 2018-2023 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,9 +28,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * Purpose:
- *  - example with DTrack2/DTrack3 remote commands:
+ *  - example with DTrack2/DTRACK3 remote commands:
  *    starts measurement, collects some frames and stops measurement again
- *  - for DTrackSDK v2.6.0 (or newer)
+ *  - for DTrackSDK v2.8.0 (or newer)
  */
 
 import art.DTrackBody;
@@ -44,6 +43,8 @@ import art.DTrackInertial;
 import art.DTrackMarker;
 import art.DTrackMeaRef;
 import art.DTrackMeaTool;
+import art.DTrackCameraStatus;
+import art.DTrackStatus;
 import art.DTrackSDK;
 import art.DTrackSDK.Errors;
 
@@ -54,7 +55,7 @@ import art.DTrackSDK.Errors;
  */
 public class Communicating
 {
-	static DTrackSDK sdk;
+	private static DTrackSDK sdk;
 
 	public static void main( String[] args )
 	{
@@ -78,7 +79,7 @@ public class Communicating
 		sdk = new DTrackSDK( host, port );
 		if ( ! sdk.isDataInterfaceValid() || ! sdk.isCommandInterfaceValid() )
 		{
-			System.out.println( "DTrackSDK init error" );
+			System.err.println( "DTrackSDK init error" );
 			return;
 		}
 		System.out.printf( "connected to ATC '%s', listening at local data port %s%n", args[ 0 ], sdk.getDataPort() );
@@ -87,20 +88,19 @@ public class Communicating
 //		sdk.setDataTimeoutUS( 3000000 );      // NOTE: change here timeout for receiving tracking data, if necessary
 //		sdk.setDataBufferSize( 100000 );      // NOTE: change here buffer size for receiving tracking data, if necessary
 
-		// request some settings:
-
-		String par = sdk.getParam( "system", "access" );  // ensure full access for DTrack2 commands
-		if ( par == null || par.compareTo( "full" ) != 0 )
+		if ( ! sdk.isCommandInterfaceFullAccess() )  // ensure full access for DTrack2/DTRACK3 commands
 		{
-			System.out.println( "Full access to ATC required!" );  // maybe DTrack2/3 frontend is still connected to ATC
+			System.err.println( "Full access to ATC required!" );  // maybe DTrack2/3 frontend is still connected to ATC
 			errorToConsole();
 			return;
 		}
 
-		par = sdk.getParam( "config", "active_config" );  // ask active configuration, just for example
+		// request some settings:
+
+		String par = sdk.getParam( "config", "active_config" );  // ask active configuration, just for example
 		if ( par == null )
 		{
-			System.out.println( "Reading parameter failed!" );
+			System.err.println( "Reading parameter failed!" );
 			errorToConsole();
 			messagesToConsole();
 			return;
@@ -111,7 +111,7 @@ public class Communicating
 
 		if ( ! sdk.startMeasurement() )  // start measurement
 		{
-			System.out.println( "Measurement start failed!" );
+			System.err.println( "Measurement start failed!" );
 			messagesToConsole();
 			return;
 		}
@@ -139,10 +139,11 @@ public class Communicating
 	private static void output()
 	{
 		System.out.printf(
-				"%nframe %s ts %s nbod %s nfly %s nmea %s nmearef %s nhand %s nmar %s nhuman %s ninertial %s%n",
+				"%nframe %s ts %s nbod %s nfly %s nmea %s nmearef %s nhand %s nmar %s nhuman %s ninertial %s status %s%n",
 				sdk.getFrameCounter(), sdk.getTimeStamp(), sdk.getNumBody(), sdk.getNumFlystick(),
 				sdk.getNumMeaTool(), sdk.getNumMeaRef(), sdk.getNumHand(), sdk.getNumMarker(),
-				sdk.getNumHuman(), sdk.getNumInertial() );
+				sdk.getNumHuman(), sdk.getNumInertial(),
+				( sdk.isStatusAvailable() ? "yes" : "no" ) );
 
 		// Standard bodies:
 		for ( int i = 0; i < sdk.getNumBody(); i++ )
@@ -330,7 +331,37 @@ public class Communicating
 						inertial.getRot()[ 0 ][ 2 ], inertial.getRot()[ 1 ][ 2 ], inertial.getRot()[ 2 ][ 2 ] );
 			}
 		}
+
+		// System status:
+		if ( ! sdk.isStatusAvailable() )
+		{
+			System.out.println( "no system status data" );
+		}
+		else
+		{
+			DTrackStatus status = sdk.getStatus();
+
+			// general status values
+			System.out.printf( "status gen nc %s nb %s nm %s%n",
+					status.getNumCameras(), status.getNumTrackedBodies(), status.getNumTrackedMarkers() );
+
+			// message statistics
+			System.out.printf( "status msg nce %s ncw %s noe %s now %s ni %s%n",
+					status.getNumCameraErrorMessages(), status.getNumCameraWarningMessages(),
+					status.getNumOtherErrorMessages(), status.getNumOtherWarningMessages(), status.getNumInfoMessages() );
+
+			// camera status values
+			for ( int i = 0; i < status.getNumCameras(); i++ )
+			{
+				DTrackCameraStatus cameraStatus = status.getCameraStatus( i );
+
+				System.out.printf( "status cam %s ns %s nu %s mi %s%n",
+						cameraStatus.getIdCamera(), cameraStatus.getNumReflections(), cameraStatus.getNumReflectionsUsed(),
+						cameraStatus.getMaxIntensity() );
+			}
+		}
 	}
+
 
 	private static boolean errorToConsole()
 	{

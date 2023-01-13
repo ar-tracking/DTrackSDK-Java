@@ -1,9 +1,8 @@
-/*
- * DTrackParser: Java source file
+/* DTrackSDK in Java: DTrackParser.java
  *
- * DTrackParser: functions to process DTrack UDP packets (ASCII protocol)
+ * Functions to process DTrack UDP packets (ASCII protocol).
  *
- * Copyright (c) 2018-2021, Advanced Realtime Tracking GmbH & Co. KG
+ * Copyright (c) 2018-2023 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -27,8 +26,6 @@
  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
- * Version v2.7.0
  */
 
 package art;
@@ -121,6 +118,14 @@ class DTrackParser
 	 * Measurement tools of currently parsed frame.
 	 */
 	private List< DTrackMeaTool > actMeatool = new ArrayList<>();
+	/**
+	 * System status data is available
+	 */
+	private boolean actIsStatusAvailable;
+	/**
+	 * System status data
+	 */
+	private DTrackStatus actStatus;
 
 
 	private int locNumBodycal;  // number of standard bodies (and Flysticks/measurement tools in old format line)
@@ -144,6 +149,7 @@ class DTrackParser
 	{
 		actFramecounter = 0;
 		actTimestamp = -1;
+		actIsStatusAvailable = false;
 	}
 
 	/**
@@ -155,6 +161,7 @@ class DTrackParser
 		actTimestamp = -1;
 		locNumBodycal = locNumHandcal = -1;
 		locNumFlystickOld = locNumMeatoolOld = 0;
+		actIsStatusAvailable = false;
 	}
 
 	/**
@@ -519,6 +526,30 @@ class DTrackParser
 		return actMarker.get( index );
 	}
 
+	/**
+	 * Returns if system status data is available.
+	 * <p>
+	 * Refers to last received frame.
+	 * 
+	 * @return System status data is available
+	 */
+	public final boolean isStatusAvailable()
+	{
+		return actIsStatusAvailable;
+	}
+
+	/**
+	 * Get system status data.
+	 * <p>
+	 * Refers to last received frame.
+	 * 
+	 * @return System status data
+	 */
+	public final DTrackStatus getStatus()
+	{
+		return actStatus;
+	}
+
 
 	/**
 	 * Parses a DTrack String (eg. from a UDP package). Stops parsing when an error occurred or the String
@@ -637,6 +668,11 @@ class DTrackParser
 		if ( label.compareTo( "3d" ) == 0 )
 		{
 			return parse3d( parse );
+		}
+
+		if ( label.compareTo( "st" ) == 0 )
+		{
+			return parseSt( parse );
 		}
 
 		log.log( Level.WARNING, "Skipped unsupported label \"{0}\"", label );
@@ -1705,6 +1741,134 @@ class DTrackParser
 		}
 
 		actTimestamp = parse.getNextDouble();
+		return true;
+	}
+
+	/**
+	 * Parses DTrack Status Data. <br>
+	 * Updates actStatus.
+	 * 
+	 * @param parse Object parsing current line
+	 * @return {@code true} Line has been parsed correctly; if failed, see log for further information
+	 */
+	private boolean parseSt( DTrackParse parse )
+	{
+		final String FORMAT = "st";
+
+		if ( ! parse.nextInt() )
+		{
+			log( FORMAT, ParseError.INT );
+			return false;
+		}
+		int ngrp = parse.getNextInt();
+
+		if ( ngrp > 3 )  ngrp = 3;  // ignore additional (i.e. future) status types
+
+		// caution: expects exactly three status types in order of their ID number
+
+		int numCameras = 0;
+		int numTrackedBodies = 0;
+		int numTrackedMarkers = 0;
+		int numCameraErrorMessages = 0;
+		int numCameraWarningMessages = 0;
+		int numOtherErrorMessages = 0;
+		int numOtherWarningMessages = 0;
+		int numInfoMessages = 0;
+		List< DTrackCameraStatus > cameraStatus = new ArrayList< DTrackCameraStatus >();
+
+		for ( int igrp = 0; igrp < ngrp; igrp++ )
+		{	
+			// get description of status type
+			int id, ncam, nval;
+			if ( igrp == 2 )  // status type '2' has an additional value (number of cameras)
+			{
+				DTrackParse.Block b = parse.parseBlock( "iii" );
+				if ( b == null )
+				{
+					log( FORMAT, ParseError.BLOCK );
+					return false;
+				}
+
+				id = b.getI( 0 );
+				ncam = b.getI( 1 );
+				nval = b.getI( 2 );
+			}
+			else  // for status types '0' and '1'
+			{
+				DTrackParse.Block b = parse.parseBlock( "ii" );
+				if ( b == null )
+				{
+					log( FORMAT, ParseError.BLOCK );
+					return false;
+				}
+
+				id = b.getI( 0 );
+				ncam = 0;
+				nval = b.getI( 1 );
+			}
+
+			// get values of status type
+			if ( id == 0 )  // general status values
+			{
+				if ( nval < 3 )  return false;  // more sophisticated at future enhancements of status values
+
+				DTrackParse.Block b1 = parse.parseBlock( "iii" );
+				if ( b1 == null )
+				{
+					log( FORMAT, ParseError.BLOCK );
+					return false;
+				}
+
+				numCameras = b1.getI( 0 );
+				numTrackedBodies = b1.getI( 1 );
+				numTrackedMarkers = b1.getI( 2 );
+			}
+			else if ( id == 1 )  // message statistics
+			{
+				if ( nval < 5 )  return false;  // more sophisticated at future enhancements of status values
+
+				DTrackParse.Block b2 = parse.parseBlock( "iiiii" );
+				if ( b2 == null )
+				{
+					log( FORMAT, ParseError.BLOCK );
+					return false;
+				}
+
+				numCameraErrorMessages = b2.getI( 0 );
+				numCameraWarningMessages = b2.getI( 1 );
+				numOtherErrorMessages = b2.getI( 2 );
+				numOtherWarningMessages = b2.getI( 3 );
+				numInfoMessages = b2.getI( 4 );
+			}
+			else if ( id == 2 )  // camera status values
+			{
+				if ( nval < 3 )  return false;  // more sophisticated at future enhancements of status values
+
+				for ( int icam = 0; icam < ncam; icam++ )
+				{
+					DTrackParse.Block b3 = parse.parseBlock( "iiii" );
+					if ( b3 == null )
+					{
+						log( FORMAT, ParseError.BLOCK );
+						return false;
+					}
+
+					int idCamera = b3.getI( 0 );
+					int numReflections = b3.getI( 1 );
+					int numReflectionsUsed = b3.getI( 2 );
+					int maxIntensity = b3.getI( 3 );
+
+					cameraStatus.add( new DTrackCameraStatus( idCamera, numReflections, numReflectionsUsed, maxIntensity ) );
+				}
+			}
+		}
+
+		actStatus = new DTrackStatus( numCameras, numTrackedBodies, numTrackedMarkers,
+		                              numCameraErrorMessages, numCameraWarningMessages,
+		                              numOtherErrorMessages, numOtherWarningMessages, numInfoMessages,
+		                              cameraStatus );
+
+		actIsStatusAvailable = true;
 		return true;
 	}
 }

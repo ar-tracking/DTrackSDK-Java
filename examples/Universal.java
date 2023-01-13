@@ -1,9 +1,8 @@
-/*
- * DTrackSDK: Java example
+/* DTrackSDK in Java: Universal.java
  *
- * Universal: Java example using universal DTrackSDK constructor for all modes
+ * Java example using universal DTrackSDK constructor for all modes.
  *
- * Copyright (c) 2021 Advanced Realtime Tracking GmbH & Co. KG
+ * Copyright (c) 2021-2023 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,10 +28,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
  * Purpose:
- *  - example with or without DTrack2/DTrack3 remote commands
+ *  - example with or without DTrack2/DTRACK3 remote commands
  *  - in communicating mode: starts measurement, collects some frames and stops measurement again
  *  - in listening mode: please start measurement manually e.g. in DTrack frontend application
- *  - for DTrackSDK v2.7.0 (or newer)
+ *  - for DTrackSDK v2.8.0 (or newer)
  */
 
 import art.DTrackBody;
@@ -45,6 +44,8 @@ import art.DTrackInertial;
 import art.DTrackMarker;
 import art.DTrackMeaRef;
 import art.DTrackMeaTool;
+import art.DTrackCameraStatus;
+import art.DTrackStatus;
 import art.DTrackSDK;
 import art.DTrackSDK.Errors;
 
@@ -79,12 +80,9 @@ public class Universal
 //		sdk.setDataTimeoutUS( 3000000 );      // NOTE: change here timeout for receiving tracking data, if necessary
 //		sdk.setDataBufferSize( 100000 );      // NOTE: change here buffer size for receiving tracking data, if necessary
 
-		// request some settings:
-
-		if ( sdk.isCommandInterfaceValid() )
+		if ( sdk.isCommandInterfaceValid() )  // ensure full access for DTrack2/DTRACK3 commands, if in communicating mode
 		{
-			String par = sdk.getParam( "system", "access" );  // ensure full access for DTrack2 commands
-			if ( par == null || par.compareTo( "full" ) != 0 )
+			if ( ! sdk.isCommandInterfaceFullAccess() )
 			{
 				System.err.println( "Full access to ATC required!" );  // maybe DTrack2/3 frontend is still connected to ATC
 				errorToConsole();
@@ -131,10 +129,11 @@ public class Universal
 	private static void output()
 	{
 		System.out.printf(
-				"%nframe %s ts %s nbod %s nfly %s nmea %s nmearef %s nhand %s nmar %s nhuman %s ninertial %s%n",
+				"%nframe %s ts %s nbod %s nfly %s nmea %s nmearef %s nhand %s nmar %s nhuman %s ninertial %s status %s%n",
 				sdk.getFrameCounter(), sdk.getTimeStamp(), sdk.getNumBody(), sdk.getNumFlystick(),
 				sdk.getNumMeaTool(), sdk.getNumMeaRef(), sdk.getNumHand(), sdk.getNumMarker(),
-				sdk.getNumHuman(), sdk.getNumInertial() );
+				sdk.getNumHuman(), sdk.getNumInertial(),
+				( sdk.isStatusAvailable() ? "yes" : "no" ) );
 
 		// Standard bodies:
 		for ( int i = 0; i < sdk.getNumBody(); i++ )
@@ -320,6 +319,35 @@ public class Universal
 						inertial.getRot()[ 0 ][ 0 ], inertial.getRot()[ 1 ][ 0 ], inertial.getRot()[ 2 ][ 0 ],
 						inertial.getRot()[ 0 ][ 1 ], inertial.getRot()[ 1 ][ 1 ], inertial.getRot()[ 2 ][ 1 ],
 						inertial.getRot()[ 0 ][ 2 ], inertial.getRot()[ 1 ][ 2 ], inertial.getRot()[ 2 ][ 2 ] );
+			}
+		}
+
+		// System status:
+		if ( ! sdk.isStatusAvailable() )
+		{
+			System.out.println( "no system status data" );
+		}
+		else
+		{
+			DTrackStatus status = sdk.getStatus();
+
+			// general status values
+			System.out.printf( "status gen nc %s nb %s nm %s%n",
+					status.getNumCameras(), status.getNumTrackedBodies(), status.getNumTrackedMarkers() );
+
+			// message statistics
+			System.out.printf( "status msg nce %s ncw %s noe %s now %s ni %s%n",
+					status.getNumCameraErrorMessages(), status.getNumCameraWarningMessages(),
+					status.getNumOtherErrorMessages(), status.getNumOtherWarningMessages(), status.getNumInfoMessages() );
+
+			// camera status values
+			for ( int i = 0; i < status.getNumCameras(); i++ )
+			{
+				DTrackCameraStatus cameraStatus = status.getCameraStatus( i );
+
+				System.out.printf( "status cam %s ns %s nu %s mi %s%n",
+						cameraStatus.getIdCamera(), cameraStatus.getNumReflections(), cameraStatus.getNumReflectionsUsed(),
+						cameraStatus.getMaxIntensity() );
 			}
 		}
 	}
