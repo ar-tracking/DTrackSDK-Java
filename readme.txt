@@ -1,4 +1,4 @@
-Copyright (c) 2018-2022 Advanced Realtime Tracking GmbH & Co. KG
+Copyright (c) 2018-2024 Advanced Realtime Tracking GmbH & Co. KG
 
 
 License
@@ -80,5 +80,5 @@ Am Oeferl 6
 D-82362 Weilheim
 Germany
 
-http://www.ar-tracking.de/
+https://www.ar-tracking.de/
 

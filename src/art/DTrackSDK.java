@@ -3,7 +3,7 @@
  * Functions to receive and process DTRACK UDP packets (ASCII protocol), as
  * well as to exchange DTrack2/DTRACK3 TCP command strings.
  *
- * Copyright (c) 2018-2022 Advanced Realtime Tracking GmbH & Co. KG
+ * Copyright (c) 2018-2024 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -28,7 +28,7 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * 
- * Version v2.8.0
+ * Version v2.9.0
  * 
  * Purpose:
  *  - receives DTRACK UDP packets (ASCII protocol) and converts them into easier to handle data
@@ -58,6 +58,7 @@ import java.util.logging.Logger;
 public class DTrackSDK extends DTrackParser implements AutoCloseable
 {
 	private static final int DTRACK2_PORT_COMMAND = 50105;   // Controller port number (TCP) for 'dtrack2' commands
+	private static final int DTRACK2_PORT_UDPSENDER = 50107;  // Controller port number (UDP) of tracking data sender
 	private static final int DTRACK2_PORT_FEEDBACK = 50110;  // Controller port number (UDP) for feedback commands
 	private static final int DTRACK2_PROT_MAXLEN = 200;      // max. length of 'dtrack2' command
 
@@ -89,6 +90,8 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	private String udpBuf;
 
 	private InetAddress controllerIP;  // IP of ART Controller (if known)
+	private InetAddress udpSenderIP;  // IP address of Controller that is sending tracking data (if known)
+	private int udpSenderPort;  // Port number from which Controller is sending tracking data
 
 	private Errors lastDataError;  // recent error codes
 	private Errors lastServerError;
@@ -108,24 +111,52 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	 * <li>"224.0.1.0:5000" : Multicast IP and port number (UDP), use for multicast listening mode.</li>
 	 * <li>"atc-301422002:5000" : Hostname of Controller and port number (UDP), use for communicating mode.</li>
 	 * <li>"192.168.0.1:5000" : IP address of Controller and port number (UDP), use for communicating mode.</li>
+	 * <li>"atc-301422002:5000:fw" : Hostname of C. and port number (UDP), use for listening mode with stateful firewall.</li>
 	 * </ul>
 	 * <p>
 	 * <b>Remember to insert {@link DTrackSDK#close()} after SDK usage or use try-with-resources to
 	 * close all sockets.</b>
 	 * 
-	 * @param connection Connection string ("&lt;data port&gt;" or "&lt;ip/host&gt;:&lt;data port&gt;")
+	 * @param connection Connection string ("&lt;data port&gt;" or "&lt;ip/host&gt;:&lt;data port&gt;" or "&lt;ip/host&gt;:&lt;port&gt;:fw")
 	 */
 	public DTrackSDK( final String connection )
 	{
 		super();
 
-		int ind = connection.lastIndexOf( ':' );
-		if ( ind != -1 )
+		String[] args = connection.split( ":" );
+		if ( ( args.length == 0 ) || ( args.length > 3 ) )  return;  // invalid connection string
+
+		String host = null;
+		int port;
+		boolean isFw = false;
+
+		if ( args.length == 1 )  // argument "<data port>"
+		{
+			port = Integer.parseInt( args[ 0 ] );
+		}
+		else  // arguments at least "<ip/host>:<data port>"
+		{
+			host = args[ 0 ];
+			port = Integer.parseInt( args[ 1 ] );
+
+			if ( args.length == 3 )  // arguments "<ip/host>:<data port>:fw"
+			{
+				if ( ! args[ 2 ].equals( "fw" ) )  return;  // invalid suffix in connection string
+
+				isFw = true;
+			}
+		}
+
+		if ( host == null )
+		{
+			init( null, port );
+		}
+		else
 		{
 			InetAddress ip;
 			try
 			{
-				ip = InetAddress.getByName( connection.substring( 0, ind ) );
+				ip = InetAddress.getByName( host );
 			}
 			catch ( UnknownHostException e )
 			{
@@ -133,15 +164,17 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 				return;
 			}
 
-			int port = Integer.parseInt( connection.substring( ind + 1 ) );
+			if ( isFw )
+			{
+				init( null, port );
 
-			init( ip, port );
-		}
-		else
-		{
-			int port = Integer.parseInt( connection );
-
-			init( null, port );
+				udpSenderIP = ip;
+				sendStatefulFirewallPacket();  // try enabling UDP connection at once
+			}
+			else
+			{
+				init( ip, port );
+			}
 		}
 	}
 
@@ -244,18 +277,24 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 		}
 		udpBuf = null;
 
+		udpSenderPort = DTRACK2_PORT_UDPSENDER;
+
 		// initialize TCP connection
 		try
 		{
-			if ( isController && ip.isReachable( tcpTimeout ) )
+			if ( isController )
 			{
 				controllerIP = ip;
-				tcp = new DTrackNetTCP( controllerIP, DTRACK2_PORT_COMMAND, tcpTimeout );
-				if ( ! tcp.isValid() )
+				udpSenderIP = ip;
+
+				if ( ip.isReachable( tcpTimeout ) )
 				{
-					controllerIP = null;
-					tcp = null;
+					tcp = new DTrackNetTCP( controllerIP, DTRACK2_PORT_COMMAND, tcpTimeout );
+					if ( ! tcp.isValid() )
+						tcp = null;
 				}
+
+				sendStatefulFirewallPacket();  // try enabling UDP connection at once
 			}
 		}
 		catch ( IOException e )
@@ -272,6 +311,30 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 		messageMsg = "";
 		messageOrigin = "";
 		messageStatus = "";
+	}
+
+
+	/**
+	 * Returns if constructor was successful due to the wanted mode.
+	 * <p>
+	 * Convenience routine, checks:
+	 * - isDataInterfaceValid() (for all modes)
+	 * - isCommandInterfaceValid() and isCommandInterfaceFullAccess() (for communicating mode)
+	 * <p>
+	 * To get more information about a failure call above routines separately.
+	 *
+	 * @return Successful?
+	 */
+	public final boolean isValid()
+	{
+		if ( ! isDataInterfaceValid() )  return false;
+
+		if ( controllerIP != null )
+		{
+			if ( ! isCommandInterfaceFullAccess() )  return false;  // calls also isCommandInterfaceValid()
+		}
+
+		return true;
 	}
 
 
@@ -382,6 +445,52 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 			bufSize = DEFAULT_UDP_BUFSIZE;
 
 		udpBufSize = bufSize;
+		return true;
+	}
+
+
+	/**
+	 * Enable UDP connection through a stateful firewall.
+	 * <p>
+	 * In order to enable UDP traffic through a stateful firewall. Just necessary for listening modes, will be done
+	 * automatically for communicating mode. Default port is working just for DTrack3 v3.1.1 or newer.
+	 *
+	 * @param senderHost Hostname or IP address of Controller
+	 * @return Success? (i.e. valid address)
+	 */
+	public boolean enableStatefulFirewallConnection( final String senderHost )
+	{
+		return enableStatefulFirewallConnection( senderHost, DTRACK2_PORT_UDPSENDER );
+	}
+
+	/**
+	 * Enable UDP connection through a stateful firewall.
+	 * <p>
+	 * In order to enable UDP traffic through a stateful firewall. Just necessary for listening modes, will be done
+	 * automatically for communicating mode.
+	 *
+	 * @param senderHost Hostname or IP address of Controller
+	 * @param senderPort Port number from which Controller is sending tracking data
+	 * @return Success? (i.e. valid address)
+	 */
+	public boolean enableStatefulFirewallConnection( final String senderHost, int senderPort )
+	{
+		InetAddress ip;
+		try
+		{
+			ip = InetAddress.getByName( senderHost );
+		}
+		catch ( UnknownHostException e )
+		{
+			log.log( Level.SEVERE, "Can't get IP address", e );
+			return false;
+		}
+
+		udpSenderIP = ip;
+		udpSenderPort = senderPort;
+
+		sendStatefulFirewallPacket();  // try enabling UDP connection
+
 		return true;
 	}
 
@@ -536,6 +645,8 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 			if ( err != 1 )
 				return false;
 		}
+
+		sendStatefulFirewallPacket();  // try enabling UDP connection
 
 		udp.start( udpTimeout, udpBufSize );
 
@@ -938,6 +1049,7 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 		return 0;
 	}
 
+	
 	/**
 	 * Set last DTrack2/DTRACK3 command error to default values.
 	 */
@@ -956,6 +1068,30 @@ public class DTrackSDK extends DTrackParser implements AutoCloseable
 	{
 		lastDTrackError = newError;
 		lastDTrackErrorString = newErrorString;
+	}
+
+
+	/**
+	 * Send dummy UDP packet for stateful firewall.
+	 * <p>
+	 * Sends a packet to the Controller, in order to enable UDP traffic through a stateful firewall.
+	 *
+	 * @return Successful?
+	 */
+	private boolean sendStatefulFirewallPacket()
+	{
+		int err;
+
+		if ( ! isDataInterfaceValid() )  return false;
+
+		if ( udpSenderIP == null )  return false;
+
+		final String txt = "fw4dtsdkj";
+
+		if ( udp.send( udpSenderIP, udpSenderPort, txt ) != 0 )
+			return false;
+
+		return true;
 	}
 
 

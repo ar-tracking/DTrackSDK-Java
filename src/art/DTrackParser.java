@@ -2,7 +2,7 @@
  *
  * Functions to process DTrack UDP packets (ASCII protocol).
  *
- * Copyright (c) 2018-2023 Advanced Realtime Tracking GmbH & Co. KG
+ * Copyright (c) 2018-2024 Advanced Realtime Tracking GmbH & Co. KG
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -83,9 +83,22 @@ class DTrackParser
 	 */
 	private int actFramecounter;
 	/**
-	 * Timestamp of currently parsed frame.
+	 * Timestamp since midnight of currently parsed frame.
 	 */
 	private double actTimestamp;
+	/**
+	 * Timestamp since Unix epoch, seconds (0, if not available).
+	 */
+	private int actTimestampSec;
+	/**
+	 * Timestamp since Unix epoch, microseconds.
+	 */
+	private int actTimestampUsec;
+	/**
+	 * Latency of current frame (0, if not available).
+	 */
+	private int actLatencyUsec;
+
 	/**
 	 * Standard bodies of currently parsed frame.
 	 */
@@ -149,6 +162,9 @@ class DTrackParser
 	{
 		actFramecounter = 0;
 		actTimestamp = -1;
+		actTimestampSec = 0;
+		actTimestampUsec = 0;
+		actLatencyUsec = 0;
 		actIsStatusAvailable = false;
 	}
 
@@ -159,6 +175,9 @@ class DTrackParser
 	{
 		actFramecounter = 0;
 		actTimestamp = -1;
+		actTimestampSec = 0;
+		actTimestampUsec = 0;
+		actLatencyUsec = 0;
 		locNumBodycal = locNumHandcal = -1;
 		locNumFlystickOld = locNumMeatoolOld = 0;
 		actIsStatusAvailable = false;
@@ -219,15 +238,51 @@ class DTrackParser
 	}
 
 	/**
-	 * Get timestamp.
+	 * Get timestamp since midnight.
 	 * <p>
 	 * Refers to last received frame.
 	 * 
-	 * @return Timestamp (-1 if information not available)
+	 * @return Timestamp in seconds (-1 if information not available)
 	 */
 	public final double getTimeStamp()
 	{
 		return actTimestamp;
+	}
+
+	/**
+	 * Get timestamp since Unix epoch (1970-01-01 00:00:00), seconds.
+	 * <p>
+	 * Refers to last received frame.
+	 *
+	 * @return Time in seconds (0 if information not available)
+	 */
+	public final int getTimeStampSec()
+	{
+		return actTimestampSec;
+	}
+
+	/**
+	 * Get timestamp since Unix epoch (1970-01-01 00:00:00), microseconds.
+	 * <p>
+	 * Refers to last received frame.
+	 *
+	 * @return Time in microseconds
+	 */
+	public final int getTimeStampUsec()
+	{
+		return actTimestampUsec;
+	}
+
+	/**
+	 * Get latency (delay between exposure and sending UDP data in Controller).
+	 * <p>
+	 * Refers to last received frame.
+	 *
+	 * @return Latency in microseconds (0 if information not available)
+	 */
+	public final int getLatencyUsec()
+	{
+		return actLatencyUsec;
 	}
 
 	/**
@@ -605,6 +660,11 @@ class DTrackParser
 			return parseTs( parse );
 		}
 
+		if ( label.compareTo( "ts2" ) == 0 )
+		{
+			return parseTs2( parse );
+		}
+
 		if ( label.compareTo( "6d" ) == 0 )
 		{
 			return parse6d( parse );
@@ -675,8 +735,7 @@ class DTrackParser
 			return parseSt( parse );
 		}
 
-		log.log( Level.WARNING, "Skipped unsupported label \"{0}\"", label );
-		return true;
+		return true;  // ignore unknown labels without warning
 	}
 
 	/**
@@ -1741,6 +1800,46 @@ class DTrackParser
 		}
 
 		actTimestamp = parse.getNextDouble();
+		return true;
+	}
+
+	/**
+	 * Parses extended timestamp data. <br>
+	 * Updates actTimestampSec, actTimestampUsec, actLatencyUsec.
+	 * 
+	 * @param parse Object parsing current line
+	 * @return {@code true} Line has been parsed correctly; if failed, see log for further information
+	 */
+	private boolean parseTs2( DTrackParse parse )
+	{
+		final String FORMAT = "ts2";
+
+		if ( ! parse.nextInt() )
+		{
+			log( FORMAT, ParseError.INT );
+			return false;
+		}
+		actTimestampSec = parse.getNextInt();
+
+		if ( ! parse.nextInt() )
+		{
+			log( FORMAT, ParseError.INT );
+			actTimestampSec = 0;
+			return false;
+		}
+		actTimestampUsec = parse.getNextInt();
+
+		if ( ! parse.nextInt() )
+		{
+			log( FORMAT, ParseError.INT );
+			actTimestampSec = 0;
+			actTimestampUsec = 0;
+			return false;
+		}
+		actLatencyUsec = parse.getNextInt();
+
+		actTimestamp = ( double )( actTimestampSec % ( 24 * 3600 ) ) + ( double )actTimestampUsec / 1000000.0;
+
 		return true;
 	}
 
